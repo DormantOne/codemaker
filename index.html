@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Verification</title>
+    <script>
+        async function getVerificationCode() {
+            // Get the user input
+            const userCode = document.getElementById('userCode').value;
+            
+            // Call the Firebase Function
+            const response = await fetch('https://verifycode-u7nxzgzwjq-uc.a.run.app?code=' + userCode);
+            const result = await response.json();
+            
+            // Display the result
+            document.getElementById('result').innerText = result.message;
+        }
+    </script>
+</head>
+<body>
+    <h1>Code Verification</h1>
+    <p>To get the Company generated code, visit the following link:</p>
+    <a href="https://apps.powerapps.com/play/e/4c52b9e1-fbc9-eef5-a21e-4f28fd3c2905/a/e49d5312-c87a-4c82-b1d4-9500bc7def92?tenantId=8b3dd73e-4e72-4679-b191-56da1588712b&source=sharebutton&sourcetime=1728002737411" target="_blank">Get company Code</a>
+    
+    <h2>Verify Your Code</h2>
+    <input type="text" id="userCode" placeholder="Enter your code here">
+    <button onclick="getVerificationCode()">Verify Code</button>
+    
+    <p id="result"></p>
+</body>
+</html>
