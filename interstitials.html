@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Interstitials Quiz with Code Verification</title>
+    <style>
+        /* Styles */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 20px;
+            overflow: auto;
+        }
+        .container {
+            max-width: 600px;
+            margin: auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: auto;
+        }
+        button {
+            margin-top: 10px;
+            padding: 10px;
+            border: none;
+            background-color: #28a745;
+            color: white;
+            font-size: 1em;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+        .disabled {
+            background-color: #c8c8c8;
+            cursor: not-allowed;
+        }
+        .fact-box {
+            font-size: 1.2em;
+            margin-bottom: 20px;
+        }
+        .options label {
+            margin-right: 10px;
+        }
+        textarea {
+            width: 100%;
+        }
+        h2 {
+            margin-top: 40px;
+        }
+        .priority {
+            display: flex;
+            justify-content: space-between;
+        }
+        #factList h3 {
+            margin-top: 20px;
+        }
+        .feedback {
+            font-size: 1.2em;
+            margin-top: 10px;
+        }
+        .priority button {
+            flex-grow: 1;
+            margin: 5px;
+        }
+        #clearField {
+            margin-top: 20px;
+        }
+        #clearField input {
+            width: 60px;
+            padding: 5px;
+            margin-right: 10px;
+        }
+    </style>
+    <!-- Import CryptoJS for AES decryption -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Interstitials Quiz</h1>
+
+        <!-- Code Verification Section -->
+        <div id="codeVerification">
+            <p>To get the Company generated code, visit the following link:</p>
+            <a href="https://apps.powerapps.com/play/e/4c52b9e1-fbc9-eef5-a21e-4f28fd3c2905/a/e49d5312-c87a-4c82-b1d4-9500bc7def92?tenantId=8b3dd73e-4e72-4679-b191-56da1588712b&source=sharebutton&sourcetime=1728002737411" target="_blank">Get Company Code</a>
+
+            <h2>Verify Your Code</h2>
+            <input type="text" id="userCode" placeholder="Enter your code here">
+            <button onclick="getVerificationCode()">Verify Code</button>
+            <p id="result"></p>
+        </div>
+
+        <!-- Quiz Content (initially hidden until verification) -->
+        <div id="quizContent" style="display: none;">
+            <!-- Fact Display -->
+            <div class="fact-box" id="factDisplay"></div>
+
+            <!-- True or False -->
+            <div class="options" id="trueFalseOptions">
+                <label>
+                    <input type="radio" name="answer" value="true">
+                    True
+                </label>
+                <label>
+                    <input type="radio" name="answer" value="false">
+                    False
+                </label>
+            </div>
+
+            <!-- Submit Button -->
+            <button id="submitAnswerBtn" onclick="submitAnswer()">Submit Answer</button>
+
+            <!-- Feedback -->
+            <div class="feedback" id="feedback" style="display: none;"></div>
+
+            <!-- Save Options -->
+            <div id="saveOptions" style="display: none;">
+                <h2>Save to Your Fact Journal?</h2>
+                <label for="comment">Add a comment (optional):</label><br>
+                <textarea id="comment" rows="3" placeholder="Your thoughts..."></textarea><br>
+                <div class="priority">
+                    <button id="saveHighBtn" onclick="saveFact('high')">Save High Priority</button>
+                    <button id="saveLowBtn" onclick="saveFact('low')">Save Low Priority</button>
+                    <button onclick="skipFact()">Don't Save</button>
+                </div>
+            </div>
+
+            <!-- Custom Score Name -->
+            <p>Quiz Score: <span id="quizScore">0</span></p>
+
+            <!-- Fact Journal -->
+            <h2>Fact Journal</h2>
+            <div id="factList"></div>
+
+            <!-- Clear Data Section -->
+            <div id="clearField">
+                <label for="clearInput">Type "clear" to reset:</label>
+                <input type="text" id="clearInput">
+                <button onclick="clearData()">Clear</button>
+            </div>
+
+            <!-- Email Facts Button -->
+            <button onclick="emailFacts()">Email Facts</button>
+        </div>
+    </div>
+
+    <script>
+        // On page load, check if the user is already verified
+        window.onload = function() {
+            const isVerified = localStorage.getItem('isVerified');
+            if (isVerified === 'true') {
+                unlockFeatures();
+            }
+        };
+
+        // Function to call verification endpoint
+        async function getVerificationCode() {
+            const userCode = document.getElementById('userCode').value;
+
+            try {
+                const response = await fetch('https://verifycode-u7nxzgzwjq-uc.a.run.app/?code=' + userCode);
+                if (!response.ok) {
+                    throw new Error("Failed to verify the code");
+                }
+                const result = await response.json();
+
+                if (result.message === "Code verified!") {
+                    localStorage.setItem('isVerified', 'true');
+                    localStorage.setItem('decryptionKey', result.decryptionKey);
+                    document.getElementById('result').innerText = "Code verified successfully!";
+                    unlockFeatures();
+                } else {
+                    document.getElementById('result').innerText = "Incorrect code. Please try again.";
+                }
+            } catch (error) {
+                console.error("Error:", error);
+                document.getElementById('result').innerText = "Error verifying the code.";
+            }
+        }
+
+        // Unlock features and decrypt data
+        function unlockFeatures() {
+            document.getElementById('quizContent').style.display = 'block';
+            document.getElementById('codeVerification').style.display = 'none'; // Hide code entry section
+
+            const decryptionKey = localStorage.getItem('decryptionKey');
+            if (decryptionKey) {
+                decryptData(decryptionKey);
+            }
+        }
+
+        // Function to decrypt the data and initialize the quiz
+        function decryptData(key) {
+            // Encrypted data (AES-encrypted in base64 format)
+            const encryptedData = `0EjPUw3cGYQPQ+wIZtJLmzhJuFwJKI/KuIO9zm8Q+7OsH0z3IOWgUBFq9NkZyQGDTicXeu/2Ev/KXzHS7Wn47btSYfE756ieLCr/0wPRDS8=
+XAPIP2zHQXIR8Tm/g4BOQ1o5IkXn9SELFpTvdD3wbPuR7ujO6p+POEqU1L9LD10uPZPTpxrVH3F7WdQz+ySN8lDt5u+FgXjKxobvfhxk499cnNLLov5m9K1ieU0VmwC3KdpDm+3KDYpvzIe3UMLTu+Lr15fAn/DckgGH5FNB7GeNSFjem9G68OJYkU6JkczV
+gMUqD/B6aACt5p3QtkRv+XoYn1PTXUOUYiHplPsDbhcgmIAnozqk6NUjqt1FqtnuJ0J1u42eVLxTmhZ5rz2OCBXoCNSnBIXZM4HcCoqAdo6w1i9xh5dRJktyR1r8Xsq8jFRqi6+VsOMVoNm6ptbaJdkMCZTYP30MwfD71ntQBbKNSFjem9G68OJYkU6JkczV
+olwcFaHEEWh/cs5/5UxoHJYGknmazI7hueyQJ6fEyl4LlmrnWKMiMRbUsnSmuwKZQOLcxbi6HVNke5dtwS9uT6IJBeK4IzpqUCmwGmrOYJz6vki5M3WxMEDXeL3Ss1I5ZtVvHNLM5O8JDZZGMAYSnOSCtm2TQOJ6Lm2B967CPQo=
+xFGvqwAo+tRi/zASpM6H3zIh765HqiUbRzSybZh/vMKpgQDqkoboT9/E5NiH2jJ0maWdTxBkqRxxTuJcFTgsw7W+aG5YpuuKxfAeOWBWy2L/hogsGe4/W9YJvSa6InykwOEZpSWzmiMwuSWpmwKBQ9YCSAO+aEtQL19EbHXjvkvxUfSzp24mhGwCKVEyBBlr
+Gt5fg0NiqGWT8HczWvdPgzMDCT1k6+Jsv4Gk3bU4jPC3ekxQHCl85wzOCl242SukUmZHTVJVtcPdg38Yk5h0nGIjqznj/Ho4dHqVLTxNWiNtn8+10119u5GpnsvRWLY4nhKrkC+IcQU31fPUBL/pgbu4C7I3yNRe5ignjtFDoQaqTqwhdBcm1nbccfYSjm3BybRgpUGr+T6i5T39LksYCQ==
++dXL2wgBmagHi1P4u5LJiEGh3roYJXDh4nm9CNxFYH0SmMz7hjWVP8kECoScMBlaytz4yzRYzCGhbVcPp/BvNQvcq1mqf97otp91/nayLkpTWBqaHgtrnEwo8n9GfSKPIgRzql3Wm43EyHXkYKWVdNuMqScFbP9rTK71tVM6ze+rfNipsLd2A+9pA1tXtduJ
+KsXesBHu+wpnAp66EpVFx9w1tcsCQ8FgoZx/jyxCBvbuQgYjTqxryLnO7lymKLtAdP2Y+UeA/vgOspa6iyLqhsXoZdoaHHO0HfuD+EzECGVFCrS3D+wlDRo3+3rjbhVjh1a6Nj1VudvMjvryDG8DHykllyq2PAJZ/eLV5L0hug0=
+zMQUi60sXcyI6F7VMtqQIx0IVL/xxVN1WhUwniGUkoAFCTsaHT1j5Ixz2MAohs8lQqD/f5olhprDwdhZeCWbzOW20DP046dSBnCYJ5lINgPIRQaTlUsJ72TJEAu+MDQ6yfDtl5/27i000+GvVtaFWXb1M4H5I9AcPrROw9eZN+8=
+YDxfLw4gwufkVHAh1hocpBnflPdjP7W78VdZleTvPt7XtgfJtgYpBLvK0qFKeA4vZ/zw40HRI3aTHZ8CHW5Zc9jMD6DZcSNDa9e9NAjmfCkOqryVFSuIKD5IoBhHHCbFWAkoYtC9NIkIOdKN93Hn0NYCSAO+aEtQL19EbHXjvkvxUfSzp24mhGwCKVEyBBlr
+Y0Xx3+GUePpBFU4RjjiOYPHHvjW2J5n6w2F5iOvQACiQiKd+P/u12bwkhodF/xx9erLOsGnbkO8RZJePKIoT4GuHYKCb7cLuYLumbz8dIjta2ECJGLMzWiz0S1rmrCqKascg1rOitUcvCFJNQUqoLTMxGRkpwiC32CFZQEyI3kSfjYLCO9S1Z6N88Da4M1P25IK2bZNA4noubYH3rsI9Cg==
+XVtEp476JIroTgBItFBJLEeM1ecqbOgYZ1yFqoKLe0Y9QxfR/f+Vn50EqzDXzX/Or1d9SDIc224IlOz6E+2R6VsNrz+YXqeIQmsyPdb81Rj7IuZpZEEwleygbNgtmebdIMrcTp4vZ/harlnwtf/IQA==
+sZFi4SMIRc8iqFpIQAoSAH9uJ1hVwMyrkMbRGXo/BfjFTkC9ufHAYrFh445vAlwwpcmcyid+6oLOBJ9usXe1LfrkmnbUmejYxwfhT5MMe/W+bi5sbaqm1ummqGJcantQoCNAcDMpSbOwz3URL28mnfmPnrSzqdl4GAh7CO/DO5MIk9mBsEC5npHmR96KMY6i
+6XN3+Yc0GEDMXcEEliJLg1koCed7kUN1dBK503i9KCWYQgKQRJ3Xmvi4goOaj0jtCDB4DSxTLnh+3GhQzmQ7Ffwt0VTy10sBxUeaoIOnk/Z+nDAN3jrkmMaxDR8g6qjOlOFQCU0a/GN77Afj1erjJvsi5mlkQTCV7KBs2C2Z5t1eZ7178g3qpbh1AdJ2JYuY
+pzR9Dn3zfWnC5Lv1ksnEr0QwW848TFPbvCpeHZQ4mDzxDBNuPqbN9KmC6ZajtCZmd1MlW6Z4UHCUi1qvgbBhnuiapSBWRzorU/b/VEOxRE9AxWOA/yVPPHoNE56JIR6BcLnj1dej0yZWWMOEmBWpW6pOrCF0FybWdtxx9hKObcHJtGClQav5PqLlPf0uSxgJ
+laxQxav3Zj4Q/HXz6k0rfb+4Jt23Ch8CxYHFbxWmuJrFqTrjMXEghaxLs2FHZcCYEKeML66m8OsvlXBZhzatvGXG1R7lf9wyK2N4b00N8WmIR/TiH3/yFyH5jKOabEFK6KazMlste2+po0c5JbKVLsm0YKVBq/k+ouU9/S5LGAk=
+TM3sd980/DzthBETBhM5JhnflPdjP7W78VdZleTvPt7hHb3iT/U3I05egX9vgL11ZpM18miTeDTxPCByu9AMEV6S3Oye0vUGItAZEDh3DiFGkrS8QP/1e2e/udBpX3gzS+uxQC4InYYa7kTQI7CWLvnmDdoY0UA0syyySjFD+HGhRK3tWdbT91cbfMvDc0FG
+mHdVkrikPwDk6czAvbY+L0eM1ecqbOgYZ1yFqoKLe0bQd3JLtd0lxKqwstsV+q2qeqRZX18T4dNCMOP5GTwIj8SdG+QEAVGJR/K8BIBXQwSCkVmUJPVniJ0uwJEpMy5RBscVlLPVLOFLBYQumTVWmJPLEMiEhAxiImIyAZU1ZYurfNipsLd2A+9pA1tXtduJ
+ju2br2DhOsDiAEL1j//FR98w5fTUiBZLeM2UWDCnjMxY8VntzrjjDUgLksyBWUc/eST4KQ7nzpLImENXHEu4nOfcb9kMs82TK0LEyHtRUFvlFiXvSiNATk17mTgzjWLeN10xW5oZHjlw+0GBWHH0vLRbkCIK1q9X7SZDx1ZdAEo=
+5QD0uNOXcAH0xqdTfi1tklkoCed7kUN1dBK503i9KCXk+a1zKEEJrgWLGh0EwlUyNVEMxKB5S++VJYrdplPpfZrYIFSZjAvCDoU3sUSDp9gTkw7bgEc/6/5l4Ft8c5mJkuxgLbXT6iVjMbIeqFYPcfh/eUdyKCl4o/7wMj5Dvbs=
+GNu3ZkKk5smdUv976xMIxIUUSDX+Fb6fYa/z4mqPPxNDpDdTPrSuk2UYCa0el0VTOP3swPubmUM1iAndjamuukXFPOV3kj4YOFz+g3zOaoryKQ6m5g7O00NNGGCGEUChPk9SwC5YR7tc5amCpoT0pIOpZfd7NRl+BIhCnjri/8s=
+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`;
+
+            try {
+                // Decrypt the data using CryptoJS (in-browser AES decryption)
+                const decryptedLines = encryptedData.split('\n').map(line => {
+                    const decrypted = CryptoJS.AES.decrypt(line, CryptoJS.enc.Utf8.parse(key), {
+                        mode: CryptoJS.mode.ECB,
+                        padding: CryptoJS.pad.Pkcs7
+                    });
+                    return decrypted.toString(CryptoJS.enc.Utf8);
+                });
+
+                const decryptedData = decryptedLines.join('\n');
+                if (decryptedData) {
+                    // Parse the decrypted data and use it for the quiz
+                    const parsedData = JSON.parse("[" + decryptedData + "]");
+                    initializeQuiz(parsedData);
+                } else {
+                    throw new Error("Failed to decrypt data");
+                }
+            } catch (error) {
+                console.error("Error decrypting data:", error);
+                document.getElementById('result').innerText = "Failed to decrypt data.";
+            }
+        }
+
+        // Initialize quiz with decrypted facts
+        function initializeQuiz(decryptedFacts) {
+            window.facts = decryptedFacts;
+            // Initialize other quiz variables
+            quizScore = parseInt(localStorage.getItem('quizScore')) || 0;
+            savedFacts = JSON.parse(localStorage.getItem('savedFacts')) || [];
+            askedFacts = JSON.parse(localStorage.getItem('askedFacts')) || [];
+            currentFactIndex = -1;
+            currentAnswerIsCorrect = false;
+            factSaved = false;
+
+            document.getElementById("quizScore").textContent = quizScore;
+            loadRandomFact();
+            renderSavedFacts();
+        }
+
+        // All other quiz functions remain the same
+        let quizScore = 0;
+        let savedFacts = [];
+        let askedFacts = [];
+        let currentFactIndex = -1;
+        let currentAnswerIsCorrect = false;
+        let factSaved = false;
+
+        // Function to load a random fact
+        function loadRandomFact() {
+            factSaved = false; // Reset save state
+            const availableFacts = window.facts.filter(fact => !askedFacts.includes(fact.id) && !savedFacts.some(savedFact => savedFact.id === fact.id));
+
+            if (availableFacts.length === 0) {
+                // No more facts available
+                document.getElementById("factDisplay").textContent = "No more facts available!";
+                document.getElementById("submitAnswerBtn").classList.add("disabled");
+                document.getElementById("saveOptions").style.display = "none"; // Hide save options
+                return;
+            }
+
+            const randomIndex = Math.floor(Math.random() * availableFacts.length);
+            currentFactIndex = window.facts.findIndex(fact => fact.id === availableFacts[randomIndex].id);
+            const factDisplay = document.getElementById("factDisplay");
+            factDisplay.textContent = window.facts[currentFactIndex].statement;
+
+            // Hide the journal entry section and feedback
+            document.getElementById("saveOptions").style.display = "none";
+            document.getElementById("feedback").style.display = "none";
+
+            // Clear previous selection and enable buttons
+            const radios = document.querySelectorAll('input[name="answer"]');
+            radios.forEach(radio => {
+                radio.checked = false;
+                radio.disabled = false;
+            });
+
+            // Enable submit button
+            document.getElementById("submitAnswerBtn").classList.remove("disabled");
+        }
+
+        // Submit Answer and show feedback, ask if the fact should be saved
+        function submitAnswer() {
+            const selectedFact = window.facts[currentFactIndex];
+            const userAnswer = document.querySelector('input[name="answer"]:checked')?.value;
+
+            if (!userAnswer) {
+                alert("Please select True or False.");
+                return;
+            }
+
+            // Determine if the answer is correct
+            currentAnswerIsCorrect = (userAnswer === 'true') === selectedFact.is_true;
+            const correctAnswerText = selectedFact.is_true ? "True" : "False";
+
+            const factDisplay = document.getElementById("factDisplay");
+            factDisplay.textContent = `${selectedFact.statement} (Correct answer: ${correctAnswerText})`;
+
+            // Show feedback: Right or Wrong
+            const feedback = document.getElementById("feedback");
+            feedback.textContent = currentAnswerIsCorrect ? "Right" : "Wrong";
+            feedback.style.display = "block";
+
+            // Adjust the score
+            if (currentAnswerIsCorrect) {
+                quizScore++;
+            } else {
+                quizScore--;
+            }
+
+            // Update score in localStorage and on the page
+            localStorage.setItem('quizScore', quizScore);
+            document.getElementById("quizScore").textContent = quizScore;
+
+            // Mark the fact as asked
+            askedFacts.push(selectedFact.id);
+            localStorage.setItem('askedFacts', JSON.stringify(askedFacts));
+
+            // Show the save options only if there are more facts available
+            document.getElementById("saveOptions").style.display = "block";
+
+            // Keep the selected button pressed and disable others
+            const radios = document.querySelectorAll('input[name="answer"]');
+            radios.forEach(radio => radio.disabled = true);
+
+            // Disable submit button
+            document.getElementById("submitAnswerBtn").classList.add("disabled");
+        }
+
+        // Save fact to journal (prevent multiple saves)
+        function saveFact(priority) {
+            if (factSaved) return; // Prevent multiple saves
+
+            const comment = document.getElementById("comment").value;
+            const selectedFact = window.facts[currentFactIndex];
+
+            const savedFact = {
+                id: selectedFact.id,
+                fact: selectedFact.statement,
+                is_true: selectedFact.is_true ? "True Fact" : "False Fact",
+                comment: comment || null,
+                priority: priority
+            };
+
+            savedFacts.push(savedFact);
+            localStorage.setItem('savedFacts', JSON.stringify(savedFacts));
+
+            factSaved = true; // Mark as saved to prevent re-saving
+
+            // Ensure the last fact gets saved to the journal before quiz ends
+            renderSavedFacts();
+
+            // Now check if all facts are answered
+            const availableFacts = window.facts.filter(fact => !askedFacts.includes(fact.id) && !savedFacts.some(savedFact => savedFact.id === fact.id));
+            if (availableFacts.length === 0) {
+                // No more facts available
+                document.getElementById("factDisplay").textContent = "No more facts available!";
+                document.getElementById("submitAnswerBtn").classList.add("disabled");
+                document.getElementById("saveOptions").style.display = "none"; // Hide save options
+            } else {
+                // Clear comment field and load a new random fact
+                document.getElementById("comment").value = '';
+                loadRandomFact();
+            }
+        }
+
+        // Skip fact without saving
+        function skipFact() {
+            const availableFacts = window.facts.filter(fact => !askedFacts.includes(fact.id) && !savedFacts.some(savedFact => savedFact.id === fact.id));
+            if (availableFacts.length === 0) {
+                // No more facts available
+                document.getElementById("factDisplay").textContent = "No more facts available!";
+                document.getElementById("submitAnswerBtn").classList.add("disabled");
+                document.getElementById("saveOptions").style.display = "none"; // Hide save options
+            } else {
+                loadRandomFact();
+            }
+        }
+
+        // Render saved facts in the journal, grouped by priority
+        function renderSavedFacts() {
+            const factList = document.getElementById("factList");
+            factList.innerHTML = '';
+
+            const highPriorityFacts = savedFacts.filter(fact => fact.priority === 'high');
+            const lowPriorityFacts = savedFacts.filter(fact => fact.priority === 'low');
+
+            // Display High Priority Facts
+            if (highPriorityFacts.length > 0) {
+                factList.innerHTML += '<h3>High Priority</h3>';
+                highPriorityFacts.forEach(fact => renderFact(factList, fact));
+            }
+
+            // Display Low Priority Facts
+            if (lowPriorityFacts.length > 0) {
+                factList.innerHTML += '<h3>Low Priority</h3>';
+                lowPriorityFacts.forEach(fact => renderFact(factList, fact));
+            }
+        }
+
+        // Helper function to render each fact
+        function renderFact(container, fact) {
+            const listItem = document.createElement("div");
+            listItem.innerHTML = `
+                <strong>Fact:</strong> ${fact.fact}<br>
+                <strong>${fact.is_true}</strong><br>
+                ${fact.comment ? `<strong>Comment:</strong> ${fact.comment}<br>` : ''}
+                <strong>Priority:</strong> ${fact.priority}<br><br>
+            `;
+            container.appendChild(listItem);
+        }
+
+        // Clear all data if user types 'clear'
+        function clearData() {
+            const input = document.getElementById("clearInput").value.trim().toLowerCase();
+            if (input === 'clear') {
+                localStorage.removeItem('quizScore');
+                localStorage.removeItem('savedFacts');
+                localStorage.removeItem('askedFacts');
+                localStorage.removeItem('isVerified');
+                localStorage.removeItem('decryptionKey');
+                window.location.reload(); // Reload the page to reset everything
+            } else {
+                alert("Please type 'clear' to reset.");
+            }
+        }
+
+        // Email the saved facts
+        function emailFacts() {
+            const emailBody = savedFacts.map(fact => `
+                Fact: ${fact.fact}
+                ${fact.is_true}
+                Comment: ${fact.comment || "No comment"}
+                Priority: ${fact.priority}
+            `).join("\n\n");
+
+            const mailtoLink = `mailto:?subject=Your%20Saved%20Facts&body=${encodeURIComponent(emailBody)}`;
+            window.location.href = mailtoLink;
+        }
+    </script>
+</body>
+</html>
